@@ -8,7 +8,9 @@ define([
         '../Core/destroyObject',
         '../Core/DeveloperError',
         '../Core/NearFarScalar',
+        '../Core/writeTextToCanvas',
         '../Scene/HorizontalOrigin',
+        '../Scene/BillboardCollection',
         '../Scene/LabelCollection',
         '../Scene/LabelStyle',
         '../Scene/VerticalOrigin',
@@ -23,13 +25,17 @@ define([
         destroyObject,
         DeveloperError,
         NearFarScalar,
+        writeTextToCanvas,
         HorizontalOrigin,
+        BillboardCollection,
         LabelCollection,
         LabelStyle,
         VerticalOrigin,
         BoundingSphereState,
         Property) {
     "use strict";
+
+    var useBillboardCollection = true;
 
     var defaultScale = 1.0;
     var defaultFont = '30px sans-serif';
@@ -84,6 +90,7 @@ define([
         this._items = new AssociativeArray();
 
         this._onCollectionChanged(entityCollection, entityCollection.values, [], []);
+        this._cache = {};
     };
 
     /**
@@ -125,7 +132,11 @@ define([
             if (!defined(label)) {
                 var labelCollection = this._labelCollection;
                 if (!defined(labelCollection)) {
-                    labelCollection = new LabelCollection();
+                    if (!useBillboardCollection) {
+                        labelCollection = new LabelCollection();
+                    } else {
+                        labelCollection = new BillboardCollection();
+                    }
                     this._labelCollection = labelCollection;
                     this._scene.primitives.add(labelCollection);
                 }
@@ -143,15 +154,50 @@ define([
                 item.label = label;
             }
 
+            var font = Property.getValueOrDefault(labelGraphics._font, time, defaultFont);
+            var style = Property.getValueOrDefault(labelGraphics._style, time, defaultStyle);
+            var fillColor = Property.getValueOrDefault(labelGraphics._fillColor, time, defaultFillColor, fillColor);
+            var outlineColor = Property.getValueOrDefault(labelGraphics._outlineColor, time, defaultOutlineColor, outlineColor);
+            var outlineWidth = Property.getValueOrDefault(labelGraphics._outlineWidth, time, defaultOutlineWidth);
+
+            if (!useBillboardCollection) {
+                label.text = text;
+                label.font = font;
+                label.style = style;
+                label.fillColor = fillColor;
+                label.outlineColor = outlineColor;
+                label.outlineWidth = outlineWidth;
+            } else {
+                var key = JSON.stringify({
+                    font : font,
+                    style : style,
+                    fill : style !== LabelStyle.OUTLINE,
+                    stroke : style !== LabelStyle.FILL,
+                    fillColor : fillColor,
+                    strokeColor : outlineColor,
+                    strokeWidth : outlineWidth
+                });
+                var image = this._cache[key];
+                if (!defined(image)) {
+                    image = writeTextToCanvas(text, {
+                        font : font,
+                        style : style,
+                        fill : style !== LabelStyle.OUTLINE,
+                        stroke : style !== LabelStyle.FILL,
+                        fillColor : fillColor,
+                        strokeColor : outlineColor,
+                        strokeWidth : outlineWidth
+                    }).toDataURL();
+                    this._cache[key] = image;
+                }
+                if (label.image !== image) {
+                    label.image = image;
+                }
+            }
+
             label.show = true;
             label.position = position;
-            label.text = text;
             label.scale = Property.getValueOrDefault(labelGraphics._scale, time, defaultScale);
-            label.font = Property.getValueOrDefault(labelGraphics._font, time, defaultFont);
-            label.style = Property.getValueOrDefault(labelGraphics._style, time, defaultStyle);
-            label.fillColor = Property.getValueOrDefault(labelGraphics._fillColor, time, defaultFillColor, fillColor);
-            label.outlineColor = Property.getValueOrDefault(labelGraphics._outlineColor, time, defaultOutlineColor, outlineColor);
-            label.outlineWidth = Property.getValueOrDefault(labelGraphics._outlineWidth, time, defaultOutlineWidth);
             label.pixelOffset = Property.getValueOrDefault(labelGraphics._pixelOffset, time, defaultPixelOffset, pixelOffset);
             label.eyeOffset = Property.getValueOrDefault(labelGraphics._eyeOffset, time, defaultEyeOffset, eyeOffset);
             label.horizontalOrigin = Property.getValueOrDefault(labelGraphics._horizontalOrigin, time, defaultHorizontalOrigin);
